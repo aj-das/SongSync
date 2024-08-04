@@ -18,4 +18,4 @@ Technologies Used:
   - APIs: Spotify API
   - Languages: JavaScript, Python
 
-The actual website and database are hosted privately, but this is a public repo to show the code.
+The website and database are hosted privately, but this is a public repo to show the code.
