@@ -20,9 +20,9 @@ CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 REDIRECT_URI = os.getenv("REDIRECT_URI")
 SCOPE = "user-top-read playlist-modify-private user-read-private ugc-image-upload"
 
-#SUPABASE Credentials
-url: str = os.getenv("SUPABASE_URL")  # Supabase project URL
-key: str = os.getenv("SUPABASE_KEY")  # Supabase service role key
+#supabase
+url: str = os.getenv("SUPABASE_URL")
+key: str = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(url, key)
 
 # intialize the spotify oauth manager
@@ -52,7 +52,7 @@ app.add_middleware(
 )
 
  ## MOOD SCORE CALCULATIONS:
- ##Mood Map and Calculations
+ ## mood map and calculations
 mood_adjectives = {
     "happy": ["Uplifting", "Sunny", "Bright"],
     "introspective": ["Reflective", "Deep", "Soulful"],
@@ -118,7 +118,7 @@ mood_map = {
         "liveness": (0.0, 0.5),
         "loudness": (-15.0, -5.0),  # increased upper limit
         "tempo": (70, 90),  # consider half-tempo adjustment in function
-        "key": list(range(12)),  # Any key
+        "key": list(range(12)),  # any key
         "weights": {
             "energy": 1,
             "valence": 3,
@@ -138,7 +138,7 @@ async def compute_mood_scores(request: Request):
         raise HTTPException(status_code=403, detail="Access Token is missing from headers.")
 
     try:
-        # Directly calling the function to compute mood scores
+        # directly calling the function to compute mood scores
         fetch_and_compute_mood_scores(access_token)
         return JSONResponse(content={"message": "Mood score calculation completed"})
     except Exception as e:
@@ -152,10 +152,10 @@ def fetch_and_compute_mood_scores(access_token):
 
 def compute_artist_mood_scores(artist_id, artist_name, sp_client):
 
-    # Check if mood scores for this artist are already computed and stored
+    # checks if mood scores for this artist are already computed and stored
     existing_scores = supabase.table("mood_scores").select("artist_id").eq("artist_id", artist_id).execute()
 
-    # If scores exist, skip computation
+    # if scores exist, skip computation
     if existing_scores.data:
         logging.info(f"Mood scores already exist for artist: {artist_name}. Skipping re-computation.")
         return
@@ -217,37 +217,35 @@ def mood_score(track, mood_criteria):
 
     for feature, criteria in mood_criteria.items():
         if feature == "weights":
-            continue  # Skip the weights dictionary
+            continue  # skip the weights dictionary
 
         feature_value = track.get(feature)
-        weight = mood_criteria["weights"].get(feature, 1)  # Fetch the weight, defaulting to 1 if not specified
+        weight = mood_criteria["weights"].get(feature, 1)  # fetch the weight, defaulting to 1 if not specified
 
         if feature == 'key':
-            # Binary match for key, score 1 if it matches, 0 otherwise
             score = 1 if feature_value in criteria else 0
         elif feature == 'tempo':
-            # Handle tempo separately to account for half-tempo
+            # handle tempo separately to account for half-tempo
             half_tempo = feature_value / 2
             score = any(min_val <= tempo <= max_val for tempo in (feature_value, half_tempo) for min_val, max_val in [criteria])
         else:
-            # Standard scoring for other features
+            # standard scoring for other features
             min_val, max_val = criteria
             if min_val <= feature_value <= max_val:
-                score = 1  # Perfect score if within the range
+                score = 1  # perfect score if within the range
             else:
-                # Penalize based on distance from the nearest bound, scaled by the range size
                 if feature_value < min_val:
                     score = max(0, 1 - (min_val - feature_value) / (max_val - min_val))
                 elif feature_value > max_val:
                     score = max(0, 1 - (feature_value - max_val) / (max_val - min_val))
                 else:
-                    score = 0  # Fallback case, though should not be necessary
+                    score = 0  # test case
 
-        # Accumulate the weighted score
+        # add the weighted score
         total_score += score * weight
         total_weight += weight
 
-    # Normalize the total score by the total weight
+    # normalize the total score by the total weight
     return total_score / total_weight if total_weight > 0 else 0
 
 
@@ -273,7 +271,7 @@ def callback(code: str):
 @app.get("/get-top-artists")
 def get_top_artists():
     try:
-        # Use the Spotipy client to get top artists
+        # use spotipy client to get top artists
         results = sp.current_user_top_artists(limit=5)
         top_artists = [{
             "id": artist['id'],
@@ -312,33 +310,33 @@ def generate_playlist(mood: str, request: Request) -> JSONResponse:
 
         all_tracks = []
         artist_tracks_dict = {}
-        track_titles_seen = set()  # Set to keep track of titles to avoid duplicates
+        track_titles_seen = set()  # set to keep track of titles to avoid duplicates
 
         for artist_id in artist_ids:
-            # Fetch tracks for each artist based on mood, limited to 50 per artist
+            # fetch tracks for each artist based on mood, limited to 50 per artist
             tracks = supabase.table("mood_scores").select("*").eq("mood", mood).eq("artist_id", artist_id).limit(75).execute()
             if tracks.data:
-                # Filter out tracks with titles that have been seen before
+                # filter out tracks with titles that have been seen before
                 filtered_tracks = [track for track in tracks.data if track['track_name'] not in track_titles_seen]
-                # Update seen titles
+                # update seen titles
                 track_titles_seen.update([track['track_name'] for track in filtered_tracks])
-                # Randomly sample 5 tracks from the filtered list, ensuring unique titles
+                # randomly sample 5 tracks from the filtered list, ensuring unique titles
                 selected_tracks = random.sample(filtered_tracks, min(5, len(filtered_tracks)))
                 artist_tracks_dict[artist_id] = selected_tracks
 
-        # Collect tracks from each artist to maintain a certain order
+        # collect tracks from each artist to maintain a certain order
         for artist_id in artist_ids:
             if artist_id in artist_tracks_dict:
                 all_tracks.extend(artist_tracks_dict[artist_id])
 
         track_ids = [track['track_id'] for track in all_tracks]
 
-        # Create and populate the playlist
+        # create and populate the playlist
         playlist_name = f"{user_name}'s {random.choice(mood_adjectives.get(mood, ['Special']))} {mood.title()} Playlist"
         playlist_description = f"A personalized playlist to enhance your {mood} mood. Enjoy the vibes!"
         playlist = sp.user_playlist_create(user_id, playlist_name, public=False, description=playlist_description)
 
-        print(f"Playlist ID: {playlist['id']}")  # Debug to check the playlist ID
+        print(f"Playlist ID: {playlist['id']}")  # debug to check the playlist ID
         sp.playlist_add_items(playlist['id'], track_ids)
 
         return JSONResponse(status_code=200, 
@@ -353,5 +351,5 @@ def generate_playlist(mood: str, request: Request) -> JSONResponse:
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv("PORT", 8000))  # Use the PORT environment variable or default to 8000
+    port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
